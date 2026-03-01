@@ -22,3 +22,11 @@ async def get_telegram_app():
 @app.post("/api/webhook")
 async def webhook_handler(request: Request):
     try:
+        telegram_app = await get_telegram_app()
+        data = await request.json()
+        update = Update.de_json(data, telegram_app.bot)
+        await telegram_app.process_update(update)
+        return Response(content="OK", status_code=200)
+    except Exception as e:
+        print(f"Error handling update: {e}")
+        return Response(content="Error", status_code=500)
