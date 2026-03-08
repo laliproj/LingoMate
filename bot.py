@@ -94,3 +94,51 @@ async def fetch_word_details(word: str) -> dict:
         except Exception as e:
             logger.error(f"Error fetching data from Dictionary API: {e}")
     return None
+
+
+# ==========================================================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Hello! I am your AI-powered English Tutor bot. 🤖\n\n"
+        "Commands:\n"
+        "/word - Get a random word\n"
+        "/flashcard - Test your vocabulary\n"
+        "/mywords - View your saved Word Bank\n"
+        "/refine [sentence] - Analyze grammar and correct mistakes"
+    )
+
+
+async def word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_chat_action("typing")
+    random_word = random.choice(WORD_POOL)
+    word_data = await fetch_word_details(random_word)
+
+    if word_data:
+        save_word(update.effective_user.id, random_word)
+        message = f"📖 *Word:* {word_data['word']}\n\n💡 *Definition:* {word_data['definition']}\n\n📝 *Example:* _{word_data['example']}_"
+        await update.message.reply_text(message, parse_mode="Markdown")
+    else:
+        await update.message.reply_text("Oops! Had trouble reaching the dictionary.")
+
+
+async def flashcard_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_chat_action("typing")
+    random_word = random.choice(WORD_POOL)
+    word_data = await fetch_word_details(random_word)
+
+    if word_data:
+        save_word(update.effective_user.id, random_word)
+        if "flashcards" not in context.user_data:
+            context.user_data["flashcards"] = {}
+        context.user_data["flashcards"][random_word] = word_data
+
+        keyboard = [[InlineKeyboardButton("👀 Show Meaning", callback_data=f"reveal:{random_word}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"🧠 *Flashcard Memory Test*\n\nDo you know what this word means?\n\n*Word:* {word_data['word']}",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+

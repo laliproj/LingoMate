@@ -30,3 +30,11 @@ async def webhook_handler(request: Request):
     except Exception as e:
         print(f"Error handling update: {e}")
         return Response(content="Error", status_code=500)
+
+@app.get("/")
+async def root():
+    return {"status": "alive", "message": "LingoMate Telegram Bot Webhook"}
+
+@app.get("/api/webhook")
+async def health():
+    return {"status": "alive", "message": "LingoMate Telegram Bot Webhook"}
