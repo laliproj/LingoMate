@@ -142,3 +142,51 @@ async def flashcard_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
 
 
+async def flashcard_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    callback_data = query.data
+    if callback_data.startswith("reveal:"):
+        word_key = callback_data.split(":")[1]
+        word_data = context.user_data.get("flashcards", {}).get(word_key)
+        if word_data:
+            revealed_text = f"🧠 *Flashcard Revealed*\n\n📖 *Word:* {word_data['word']}\n\n💡 *Definition:* {word_data['definition']}\n\n📝 *Example:* _{word_data['example']}_"
+            await query.edit_message_text(text=revealed_text, parse_mode="Markdown")
+
+
+async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    sentence_to_explain = " ".join(context.args)
+    if not sentence_to_explain.strip():
+        await update.message.reply_text(
+            "⚠️ Please provide a sentence to analyze.\n\nExample: /explain Me going to the store yesterday"
+        )
+        return
+
+    await update.message.reply_chat_action("typing")
+    try:
+        config = types.GenerateContentConfig(
+            system_instruction=(
+                "You are a quick, casual English conversation coach. "
+                "CRITICAL RULES:\n"
+                "1. NEVER use markdown formatting. NO stars, NO asterisks, NO bold text. Use plain text only.\n"
+                "2. NEVER break down the grammar word-by-word. Do not use academic terms.\n"
+                "3. KEEP IT SHORT. Max 3 sentences total.\n"
+                "If the sentence is okay, say 'Looks good!' and give one natural alternative. "
+                "If it has a mistake, just provide the correct version and explain why in one simple, plain sentence."
+            )
+        )
+
+        response = await gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=sentence_to_explain,
+            config=config
+        )
+
+        # Safe, plain text header
+        await update.message.reply_text(f"🤖 Tutor Analysis for: \"{sentence_to_explain}\"")
+
+        # The AI's response, which should now be free of asterisks
+        await update.message.reply_text(response.text)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Raw Error Details:\n\n{str(e)}")
