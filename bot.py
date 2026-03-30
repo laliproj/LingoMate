@@ -190,3 +190,50 @@ async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     except Exception as e:
         await update.message.reply_text(f"❌ Raw Error Details:\n\n{str(e)}")
+
+
+async def mywords_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    user_first_name = update.effective_user.first_name
+    saved_words = get_user_words(user_id)
+
+    if not saved_words:
+        await update.message.reply_text(
+            "📚 Your Word Bank is currently empty!\n\nUse /word or /flashcard to start collecting words.")
+        return
+
+    formatted_list = "\n".join([f"• {word.capitalize()}" for word in saved_words])
+    await update.message.reply_text(
+        f"📚 *{user_first_name}'s Word Bank* ({len(saved_words)} words):\n\n{formatted_list}", parse_mode="Markdown")
+
+
+def get_application() -> Application:
+    if not TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN not found!")
+        raise ValueError("TELEGRAM_BOT_TOKEN not found")
+    if not GEMINI_KEY:
+        logger.error("GEMINI_API_KEY not found!")
+        raise ValueError("GEMINI_API_KEY not found")
+
+    init_db()
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("word", word_command))
+    application.add_handler(CommandHandler("flashcard", flashcard_command))
+    application.add_handler(CallbackQueryHandler(flashcard_button_handler))
+    application.add_handler(CommandHandler("refine", explain_command))
+    application.add_handler(CommandHandler("mywords", mywords_command))
+    
+    return application
+
+def main() -> None:
+    try:
+        application = get_application()
+        logger.info("Bot is starting up in polling mode... Press Ctrl+C to stop it.")
+        application.run_polling()
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+
+if __name__ == '__main__':
+    main()
