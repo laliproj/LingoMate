@@ -1,0 +1,7 @@
+[project]
+name = "lingomate"
+version = "1.0.0"
+description = "LingoMate Telegram Bot"
+requires-python = ">=3.12"
+dependencies = [
+    "python-telegram-bot>=22.0",
