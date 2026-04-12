@@ -118,3 +118,122 @@ async def word_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         save_word(update.effective_user.id, random_word)
         message = f"📖 *Word:* {word_data['word']}\n\n💡 *Definition:* {word_data['definition']}\n\n📝 *Example:* _{word_data['example']}_"
         await update.message.reply_text(message, parse_mode="Markdown")
+    else:
+        await update.message.reply_text("Oops! Had trouble reaching the dictionary.")
+
+
+async def flashcard_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_chat_action("typing")
+    random_word = random.choice(WORD_POOL)
+    word_data = await fetch_word_details(random_word)
+
+    if word_data:
+        save_word(update.effective_user.id, random_word)
+        if "flashcards" not in context.user_data:
+            context.user_data["flashcards"] = {}
+        context.user_data["flashcards"][random_word] = word_data
+
+        keyboard = [[InlineKeyboardButton("👀 Show Meaning", callback_data=f"reveal:{random_word}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"🧠 *Flashcard Memory Test*\n\nDo you know what this word means?\n\n*Word:* {word_data['word']}",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+
+async def flashcard_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    callback_data = query.data
+    if callback_data.startswith("reveal:"):
+        word_key = callback_data.split(":")[1]
+        word_data = context.user_data.get("flashcards", {}).get(word_key)
+        if word_data:
+            revealed_text = f"🧠 *Flashcard Revealed*\n\n📖 *Word:* {word_data['word']}\n\n💡 *Definition:* {word_data['definition']}\n\n📝 *Example:* _{word_data['example']}_"
+            await query.edit_message_text(text=revealed_text, parse_mode="Markdown")
+
+
+async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    sentence_to_explain = " ".join(context.args)
+    if not sentence_to_explain.strip():
+        await update.message.reply_text(
+            "⚠️ Please provide a sentence to analyze.\n\nExample: /explain Me going to the store yesterday"
+        )
+        return
+
+    await update.message.reply_chat_action("typing")
+    try:
+        config = types.GenerateContentConfig(
+            system_instruction=(
+                "You are a quick, casual English conversation coach. "
+                "CRITICAL RULES:\n"
+                "1. NEVER use markdown formatting. NO stars, NO asterisks, NO bold text. Use plain text only.\n"
+                "2. NEVER break down the grammar word-by-word. Do not use academic terms.\n"
+                "3. KEEP IT SHORT. Max 3 sentences total.\n"
+                "If the sentence is okay, say 'Looks good!' and give one natural alternative. "
+                "If it has a mistake, just provide the correct version and explain why in one simple, plain sentence."
+            )
+        )
+
+        response = await gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=sentence_to_explain,
+            config=config
+        )
+
+        # Safe, plain text header
+        await update.message.reply_text(f"🤖 Tutor Analysis for: \"{sentence_to_explain}\"")
+
+        # The AI's response, which should now be free of asterisks
+        await update.message.reply_text(response.text)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Raw Error Details:\n\n{str(e)}")
+
+
+async def mywords_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    user_first_name = update.effective_user.first_name
+    saved_words = get_user_words(user_id)
+
+    if not saved_words:
+        await update.message.reply_text(
+            "📚 Your Word Bank is currently empty!\n\nUse /word or /flashcard to start collecting words.")
+        return
+
+    formatted_list = "\n".join([f"• {word.capitalize()}" for word in saved_words])
+    await update.message.reply_text(
+        f"📚 *{user_first_name}'s Word Bank* ({len(saved_words)} words):\n\n{formatted_list}", parse_mode="Markdown")
+
+
+def get_application() -> Application:
+    if not TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN not found!")
+        raise ValueError("TELEGRAM_BOT_TOKEN not found")
+    if not GEMINI_KEY:
+        logger.error("GEMINI_API_KEY not found!")
+        raise ValueError("GEMINI_API_KEY not found")
+
+    init_db()
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("word", word_command))
+    application.add_handler(CommandHandler("flashcard", flashcard_command))
+    application.add_handler(CallbackQueryHandler(flashcard_button_handler))
+    application.add_handler(CommandHandler("refine", explain_command))
+    application.add_handler(CommandHandler("mywords", mywords_command))
+    
+    return application
+
+def main() -> None:
+    try:
+        application = get_application()
+        logger.info("Bot is starting up in polling mode... Press Ctrl+C to stop it.")
+        application.run_polling()
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+
+if __name__ == '__main__':
+    main()
